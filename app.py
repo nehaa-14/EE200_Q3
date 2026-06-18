@@ -52,6 +52,25 @@ def build_database(songs_folder, progress_bar=None):
             progress_bar.progress((i+1)/len(files), text=f"INDEXING: {song_name.upper()}")
     return dict(db)
 
+def build_database_from_files(uploaded_files, progress_bar=None):
+    db = defaultdict(list)
+    for i, uf in enumerate(uploaded_files):
+        song_name = os.path.splitext(uf.name)[0]
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                tmp.write(uf.read())
+                tmp_path = tmp.name
+            S_db, sr, hop = compute_spectrogram(tmp_path)
+            peaks = get_peaks(S_db)
+            hashes = hash_peaks(peaks)
+            for (h, t) in hashes:
+                db[h].append((song_name, t))
+        except:
+            pass
+        if progress_bar:
+            progress_bar.progress((i+1)/len(uploaded_files), text=f"INDEXING: {song_name.upper()}")
+    return dict(db)
+
 def identify_song(query_path, db):
     S_db, sr, hop = compute_spectrogram(query_path)
     peaks = get_peaks(S_db)
@@ -81,12 +100,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ─── MASTER CSS ───────────────────────────────────────────────
+# ─── CSS ──────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500&display=swap');
 
-/* ── RESET & BASE ── */
 * { box-sizing: border-box; }
 
 .stApp {
@@ -94,456 +112,375 @@ st.markdown("""
     font-family: 'Inter', sans-serif;
 }
 
-/* Animated background grid */
 .stApp::before {
     content: '';
     position: fixed;
     inset: 0;
     background-image:
-        linear-gradient(rgba(180,0,0,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(180,0,0,0.03) 1px, transparent 1px);
-    background-size: 50px 50px;
+        linear-gradient(rgba(180,0,0,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(180,0,0,0.025) 1px, transparent 1px);
+    background-size: 60px 60px;
     pointer-events: none;
     z-index: 0;
 }
 
-/* Red glow orb top right */
 .stApp::after {
     content: '';
     position: fixed;
-    top: -200px;
-    right: -200px;
-    width: 600px;
-    height: 600px;
-    background: radial-gradient(circle, rgba(180,0,0,0.15) 0%, transparent 70%);
+    top: -200px; right: -200px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(180,0,0,0.12) 0%, transparent 70%);
     pointer-events: none;
     z-index: 0;
 }
 
-/* ── SIDEBAR ── */
+/* SIDEBAR */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0d0d0d 0%, #111111 100%) !important;
-    border-right: 1px solid rgba(180,0,0,0.3) !important;
-    box-shadow: 4px 0 30px rgba(180,0,0,0.1) !important;
+    background: linear-gradient(180deg, #0a0a0a 0%, #0d0d0d 100%) !important;
+    border-right: 1px solid rgba(180,0,0,0.25) !important;
+    min-width: 220px !important;
+    max-width: 220px !important;
 }
 
 section[data-testid="stSidebar"] > div {
-    padding-top: 2rem;
+    padding: 1.5rem 1rem !important;
 }
 
-/* ── TYPOGRAPHY ── */
-h1, h2, h3 {
-    font-family: 'Orbitron', monospace !important;
-    letter-spacing: 3px !important;
-}
-
-h1 {
-    font-size: 2.2rem !important;
-    font-weight: 900 !important;
-    background: linear-gradient(135deg, #ff0000, #cc0000, #ff4444, #cc0000);
-    background-size: 300% auto;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    background-clip: text !important;
-    animation: shimmer 4s linear infinite;
-    text-transform: uppercase;
-    margin-bottom: 0 !important;
-}
-
-@keyframes shimmer {
-    0% { background-position: 0% center; }
-    100% { background-position: 300% center; }
-}
-
-h2 {
-    color: #cc0000 !important;
-    font-size: 1.1rem !important;
-    font-weight: 600 !important;
-    text-transform: uppercase;
-    letter-spacing: 4px !important;
-}
-
-h3 {
-    color: #888 !important;
-    font-size: 0.75rem !important;
-    font-weight: 400 !important;
-    text-transform: uppercase;
-    letter-spacing: 3px !important;
-}
-
-p, label, .stMarkdown p {
-    font-family: 'Inter', sans-serif !important;
-    color: #aaa !important;
-}
-
-/* ── BUTTONS ── */
+/* BUTTONS */
 .stButton > button {
     background: transparent !important;
-    border: 1px solid rgba(180,0,0,0.6) !important;
+    border: 1px solid rgba(180,0,0,0.5) !important;
     border-radius: 2px !important;
-    color: #ff3333 !important;
+    color: #cc0000 !important;
     font-family: 'Orbitron', monospace !important;
-    font-size: 0.7rem !important;
+    font-size: 0.6rem !important;
     font-weight: 700 !important;
     letter-spacing: 3px !important;
-    padding: 0.7rem 2rem !important;
+    padding: 0.65rem 1.5rem !important;
     text-transform: uppercase !important;
-    transition: all 0.3s ease !important;
-    position: relative !important;
-    overflow: hidden !important;
-}
-
-.stButton > button::before {
-    content: '' !important;
-    position: absolute !important;
-    inset: 0 !important;
-    background: linear-gradient(135deg, rgba(180,0,0,0) 0%, rgba(180,0,0,0.15) 100%) !important;
-    opacity: 0 !important;
-    transition: opacity 0.3s ease !important;
+    transition: all 0.25s ease !important;
+    width: auto !important;
 }
 
 .stButton > button:hover {
     border-color: #ff0000 !important;
     color: #ffffff !important;
-    box-shadow: 0 0 20px rgba(180,0,0,0.5), inset 0 0 20px rgba(180,0,0,0.1) !important;
+    box-shadow: 0 0 25px rgba(180,0,0,0.4), inset 0 0 15px rgba(180,0,0,0.08) !important;
     transform: translateY(-1px) !important;
 }
 
-.stButton > button:hover::before {
-    opacity: 1 !important;
-}
-
-/* ── TEXT INPUT ── */
+/* TEXT INPUT */
 .stTextInput > div > div > input {
     background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(180,0,0,0.3) !important;
+    border: 1px solid rgba(180,0,0,0.25) !important;
     border-radius: 2px !important;
     color: #e0e0e0 !important;
     font-family: 'Rajdhani', sans-serif !important;
-    font-size: 1rem !important;
+    font-size: 0.95rem !important;
     letter-spacing: 1px !important;
-    padding: 0.7rem 1rem !important;
-    transition: all 0.3s ease !important;
+    padding: 0.65rem 1rem !important;
 }
 
 .stTextInput > div > div > input:focus {
     border-color: #cc0000 !important;
-    box-shadow: 0 0 15px rgba(180,0,0,0.3), 0 0 0 1px rgba(180,0,0,0.2) !important;
-    background: rgba(180,0,0,0.03) !important;
+    box-shadow: 0 0 15px rgba(180,0,0,0.25) !important;
 }
 
-/* ── FILE UPLOADER ── */
+/* FILE UPLOADER */
 div[data-testid="stFileUploader"] {
-    border: 1px solid rgba(180,0,0,0.3) !important;
+    border: 1px solid rgba(180,0,0,0.25) !important;
     border-radius: 2px !important;
     background: rgba(180,0,0,0.02) !important;
-    padding: 2rem !important;
+    padding: 1.5rem !important;
     transition: all 0.3s ease !important;
-    position: relative !important;
 }
 
 div[data-testid="stFileUploader"]:hover {
-    border-color: #cc0000 !important;
-    background: rgba(180,0,0,0.05) !important;
-    box-shadow: 0 0 30px rgba(180,0,0,0.15) !important;
+    border-color: #990000 !important;
+    box-shadow: 0 0 25px rgba(180,0,0,0.12) !important;
 }
 
-/* ── PROGRESS BAR ── */
+div[data-testid="stFileUploaderDropzone"] {
+    background: transparent !important;
+}
+
+/* PROGRESS */
 .stProgress > div > div {
-    background: linear-gradient(90deg, #660000, #cc0000, #ff4444) !important;
-    box-shadow: 0 0 10px rgba(204,0,0,0.5) !important;
+    background: linear-gradient(90deg, #660000, #cc0000, #ff3333) !important;
+    box-shadow: 0 0 8px rgba(204,0,0,0.4) !important;
 }
-
 .stProgress > div {
-    background: rgba(255,255,255,0.05) !important;
+    background: rgba(255,255,255,0.04) !important;
     border-radius: 0 !important;
-    height: 3px !important;
+    height: 2px !important;
 }
 
-/* ── ALERTS ── */
+/* ALERTS */
 div[data-testid="stAlert"] {
-    background: rgba(180,0,0,0.08) !important;
-    border: 1px solid rgba(180,0,0,0.3) !important;
+    background: rgba(180,0,0,0.06) !important;
+    border: 1px solid rgba(180,0,0,0.25) !important;
     border-left: 3px solid #cc0000 !important;
     border-radius: 2px !important;
-    backdrop-filter: blur(10px) !important;
 }
 
-/* ── RADIO ── */
-.stRadio > div {
-    gap: 1rem !important;
+/* RADIO */
+div[role="radiogroup"] {
+    gap: 0.5rem !important;
+    flex-direction: column !important;
 }
 
-.stRadio label {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(180,0,0,0.2) !important;
+div[role="radiogroup"] label {
+    background: rgba(255,255,255,0.01) !important;
+    border: 1px solid rgba(180,0,0,0.15) !important;
     border-radius: 2px !important;
-    padding: 0.5rem 1.5rem !important;
+    padding: 0.5rem 1rem !important;
     font-family: 'Orbitron', monospace !important;
-    font-size: 0.65rem !important;
+    font-size: 0.6rem !important;
     letter-spacing: 2px !important;
-    color: #888 !important;
-    cursor: pointer !important;
-    transition: all 0.3s ease !important;
+    color: #555 !important;
+    transition: all 0.2s ease !important;
+    width: 100% !important;
 }
 
-.stRadio label:hover {
+div[role="radiogroup"] label:hover {
     border-color: #cc0000 !important;
     color: #cc0000 !important;
 }
 
-/* ── DIVIDER ── */
+/* DIVIDER */
 hr {
     border: none !important;
-    border-top: 1px solid rgba(180,0,0,0.2) !important;
-    margin: 2rem 0 !important;
+    border-top: 1px solid rgba(180,0,0,0.15) !important;
+    margin: 1.5rem 0 !important;
 }
 
-/* ── SELECTBOX ── */
-.stSelectbox > div > div {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(180,0,0,0.3) !important;
-    border-radius: 2px !important;
-    color: #e0e0e0 !important;
-}
-
-/* ── TABLE ── */
-.stTable {
-    border: 1px solid rgba(180,0,0,0.2) !important;
-}
-
-/* ── DOWNLOAD BUTTON ── */
+/* DOWNLOAD */
 .stDownloadButton > button {
-    background: rgba(180,0,0,0.1) !important;
-    border: 1px solid rgba(180,0,0,0.4) !important;
+    background: rgba(180,0,0,0.08) !important;
+    border: 1px solid rgba(180,0,0,0.35) !important;
     border-radius: 2px !important;
-    color: #ff3333 !important;
+    color: #cc0000 !important;
     font-family: 'Orbitron', monospace !important;
-    font-size: 0.65rem !important;
+    font-size: 0.6rem !important;
     letter-spacing: 2px !important;
 }
 
-/* ── METRIC ── */
-div[data-testid="stMetric"] {
-    background: rgba(255,255,255,0.02) !important;
-    border: 1px solid rgba(180,0,0,0.2) !important;
-    border-radius: 2px !important;
-    padding: 1rem !important;
-}
+/* SPINNER */
+.stSpinner > div { border-top-color: #cc0000 !important; }
 
-div[data-testid="stMetricValue"] {
-    font-family: 'Orbitron', monospace !important;
-    color: #cc0000 !important;
-    font-size: 1.5rem !important;
-}
-
-/* ── SPINNER ── */
-.stSpinner > div {
-    border-top-color: #cc0000 !important;
-}
-
-/* ── SCROLLBAR ── */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #0d0d0d; }
-::-webkit-scrollbar-thumb { background: #330000; border-radius: 2px; }
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #330000; }
 ::-webkit-scrollbar-thumb:hover { background: #cc0000; }
+
+/* TABLE */
+table {
+    font-family: 'Rajdhani', sans-serif !important;
+    border-collapse: collapse !important;
+    width: 100% !important;
+}
+th {
+    font-family: 'Orbitron', monospace !important;
+    font-size: 0.6rem !important;
+    letter-spacing: 2px !important;
+    color: #cc0000 !important;
+    border-bottom: 1px solid rgba(180,0,0,0.3) !important;
+    padding: 0.75rem !important;
+    background: rgba(180,0,0,0.05) !important;
+}
+td {
+    color: #888 !important;
+    padding: 0.75rem !important;
+    border-bottom: 1px solid rgba(255,255,255,0.03) !important;
+    font-size: 0.9rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
+# ─── SESSION STATE ────────────────────────────────────────────
+if 'db' not in st.session_state:
+    st.session_state.db = None
+if 'db_size' not in st.session_state:
+    st.session_state.db_size = 0
+if 'db_source' not in st.session_state:
+    st.session_state.db_source = ""
 
 # ─── SIDEBAR ──────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style='text-align:center; padding: 1rem 0 2rem 0;'>
-        <div style='
-            font-family: Orbitron, monospace;
-            font-size: 1.4rem;
-            font-weight: 900;
-            color: #cc0000;
-            letter-spacing: 4px;
-            text-shadow: 0 0 20px rgba(204,0,0,0.5);
-        '>⬡ Z·A</div>
-        <div style='
-            font-family: Rajdhani, sans-serif;
-            font-size: 0.65rem;
-            color: #444;
-            letter-spacing: 4px;
-            margin-top: 0.3rem;
-            text-transform: uppercase;
-        '>Stark Audio Systems</div>
+    <div style='text-align:center; padding:0.5rem 0 2rem 0; border-bottom:1px solid rgba(180,0,0,0.15); margin-bottom:1.5rem;'>
+        <div style='font-family:Orbitron,monospace; font-size:1.3rem; font-weight:900; color:#cc0000;
+                    text-shadow:0 0 20px rgba(204,0,0,0.4); letter-spacing:4px;'>⬡ Z·A</div>
+        <div style='font-family:Rajdhani,sans-serif; font-size:0.6rem; color:#333;
+                    letter-spacing:3px; margin-top:0.3rem;'>STARK AUDIO SYSTEMS</div>
     </div>
+    <div style='font-family:Orbitron,monospace; font-size:0.5rem; color:#333;
+                letter-spacing:3px; margin-bottom:0.75rem;'>NAVIGATION</div>
     """, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style='margin-bottom: 2rem;'>
-        <div style='font-family: Orbitron, monospace; font-size: 0.55rem; color: #333; letter-spacing: 3px; margin-bottom: 1rem; padding-left: 0.5rem;'>NAVIGATION</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    nav = st.radio("", [
+    nav = st.radio("NAV", [
         "⬡  IDENTIFY",
         "⬡  BATCH SCAN",
         "⬡  DATABASE",
     ], label_visibility="collapsed")
 
-    st.markdown("""
-    <div style='position: absolute; bottom: 2rem; left: 0; right: 0; padding: 0 1rem;'>
-        <div style='
-            border: 1px solid rgba(180,0,0,0.2);
-            border-radius: 2px;
-            padding: 1rem;
-            background: rgba(180,0,0,0.03);
-        '>
-            <div style='font-family: Orbitron, monospace; font-size: 0.55rem; color: #cc0000; letter-spacing: 2px;'>SYSTEM STATUS</div>
-            <div style='font-family: Rajdhani, sans-serif; font-size: 0.85rem; color: #666; margin-top: 0.5rem;'>EE200 · SSN PROJECT</div>
-            <div style='font-family: Rajdhani, sans-serif; font-size: 0.75rem; color: #444;'>Q3B · AUDIO FINGERPRINT</div>
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    db_status = "ONLINE" if st.session_state.db else "OFFLINE"
+    db_color = "#cc0000" if st.session_state.db else "#333"
+    st.markdown(f"""
+    <div style='border:1px solid rgba(180,0,0,0.15); border-radius:2px;
+                padding:0.75rem; background:rgba(180,0,0,0.02); margin-top:1rem;'>
+        <div style='font-family:Orbitron,monospace; font-size:0.5rem;
+                    color:#333; letter-spacing:2px; margin-bottom:0.4rem;'>SYSTEM STATUS</div>
+        <div style='font-family:Orbitron,monospace; font-size:0.75rem; color:{db_color};'>
+            DB: {db_status}
+        </div>
+        <div style='font-family:Rajdhani,sans-serif; font-size:0.7rem; color:#333; margin-top:0.2rem;'>
+            {f"{st.session_state.db_size:,} fingerprints" if st.session_state.db else "No data loaded"}
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 # ─── MAIN HEADER ──────────────────────────────────────────────
 st.markdown("""
-<div style='
-    border-bottom: 1px solid rgba(180,0,0,0.2);
-    padding-bottom: 2rem;
-    margin-bottom: 2rem;
-'>
-    <div style='display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;'>
-        <div style='
-            width: 3px;
-            height: 3rem;
-            background: linear-gradient(180deg, #cc0000, transparent);
-            border-radius: 2px;
-        '></div>
+<div style='border-bottom:1px solid rgba(180,0,0,0.15); padding-bottom:1.5rem; margin-bottom:1.5rem;'>
+    <div style='display:flex; align-items:center; gap:1rem;'>
+        <div style='width:3px; height:2.5rem;
+                    background:linear-gradient(180deg,#cc0000,transparent); border-radius:2px;'></div>
         <div>
-            <div style='
-                font-family: Orbitron, monospace;
-                font-size: 2rem;
-                font-weight: 900;
-                background: linear-gradient(135deg, #ff2222, #cc0000, #ff4444);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
-                letter-spacing: 6px;
-                text-transform: uppercase;
-            '>ZAPPTAIN AMERICA</div>
-            <div style='
-                font-family: Rajdhani, sans-serif;
-                font-size: 0.8rem;
-                color: #444;
-                letter-spacing: 4px;
-                text-transform: uppercase;
-                margin-top: 0.2rem;
-            '>Audio Fingerprint Recognition System · Stark Industries</div>
+            <div style='font-family:Orbitron,monospace; font-size:1.8rem; font-weight:900;
+                        background:linear-gradient(135deg,#ff2222,#cc0000,#ff4444);
+                        -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+                        background-clip:text; letter-spacing:5px; text-transform:uppercase;'>
+                ZAPPTAIN AMERICA
+            </div>
+            <div style='font-family:Rajdhani,sans-serif; font-size:0.7rem; color:#333;
+                        letter-spacing:4px; text-transform:uppercase; margin-top:0.2rem;'>
+                Audio Fingerprint Recognition System
+            </div>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ─── DATABASE STATE ───────────────────────────────────────────
-if 'db' not in st.session_state:
-    st.session_state.db = None
-if 'db_size' not in st.session_state:
-    st.session_state.db_size = 0
-
-# ─── STATUS BAR ───────────────────────────────────────────────
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.markdown(f"""
-    <div style='border:1px solid rgba(180,0,0,0.2); padding:1rem; background:rgba(180,0,0,0.03);'>
-        <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#444; letter-spacing:2px;'>DATABASE</div>
-        <div style='font-family:Orbitron,monospace; font-size:1.3rem; color:#cc0000; margin-top:0.3rem;'>
-            {"ONLINE" if st.session_state.db else "OFFLINE"}
+# ─── STATUS CARDS ─────────────────────────────────────────────
+c1, c2, c3, c4 = st.columns(4)
+cards = [
+    ("DATABASE", "ONLINE" if st.session_state.db else "OFFLINE"),
+    ("FINGERPRINTS", f"{st.session_state.db_size:,}" if st.session_state.db else "——"),
+    ("ALGORITHM", "SHA·FP"),
+    ("VERSION", "V·3.0"),
+]
+for col, (label, val) in zip([c1,c2,c3,c4], cards):
+    with col:
+        st.markdown(f"""
+        <div style='border:1px solid rgba(180,0,0,0.18); padding:1rem;
+                    background:rgba(180,0,0,0.025); border-radius:2px;'>
+            <div style='font-family:Orbitron,monospace; font-size:0.5rem;
+                        color:#333; letter-spacing:2px;'>{label}</div>
+            <div style='font-family:Orbitron,monospace; font-size:1.2rem;
+                        color:#cc0000; margin-top:0.3rem;'>{val}</div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-with col2:
-    st.markdown(f"""
-    <div style='border:1px solid rgba(180,0,0,0.2); padding:1rem; background:rgba(180,0,0,0.03);'>
-        <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#444; letter-spacing:2px;'>FINGERPRINTS</div>
-        <div style='font-family:Orbitron,monospace; font-size:1.3rem; color:#cc0000; margin-top:0.3rem;'>
-            {f"{st.session_state.db_size:,}" if st.session_state.db else "——"}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-with col3:
-    st.markdown("""
-    <div style='border:1px solid rgba(180,0,0,0.2); padding:1rem; background:rgba(180,0,0,0.03);'>
-        <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#444; letter-spacing:2px;'>ALGORITHM</div>
-        <div style='font-family:Orbitron,monospace; font-size:1.3rem; color:#cc0000; margin-top:0.3rem;'>SHA·FP</div>
-    </div>
-    """, unsafe_allow_html=True)
-with col4:
-    st.markdown("""
-    <div style='border:1px solid rgba(180,0,0,0.2); padding:1rem; background:rgba(180,0,0,0.03);'>
-        <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#444; letter-spacing:2px;'>VERSION</div>
-        <div style='font-family:Orbitron,monospace; font-size:1.3rem; color:#cc0000; margin-top:0.3rem;'>V·3.0</div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ─── DATABASE PAGE ────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# DATABASE PAGE
+# ═══════════════════════════════════════════════════════════════
 if nav == "⬡  DATABASE":
     st.markdown("""
-    <div style='font-family:Orbitron,monospace; font-size:0.7rem; color:#cc0000; letter-spacing:4px; margin-bottom:1.5rem;'>
-        ⬡ &nbsp; DATABASE CONFIGURATION
-    </div>
+    <div style='font-family:Orbitron,monospace; font-size:0.65rem; color:#cc0000;
+                letter-spacing:4px; margin-bottom:1.5rem;'>⬡ &nbsp; DATABASE CONFIGURATION</div>
     """, unsafe_allow_html=True)
 
-    songs_folder = st.text_input(
-        "SONGS DIRECTORY PATH",
-        value=os.path.expanduser("~/EE200_Q3/songs"),
-        placeholder="/path/to/your/songs"
-    )
+    method = st.radio("Build method", [
+        "📁  Upload song files directly",
+        "🗂️  Use folder path (local only)"
+    ], label_visibility="collapsed")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        build_btn = st.button("⬡ INITIALIZE DATABASE")
 
-    if build_btn:
-        if os.path.exists(songs_folder):
-            st.markdown("""
-            <div style='font-family:Rajdhani,sans-serif; font-size:0.8rem; color:#666; letter-spacing:2px; margin-bottom:0.5rem;'>
-                SCANNING AUDIO FILES...
+    if method == "📁  Upload song files directly":
+        st.markdown("""
+        <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#555;
+                    letter-spacing:3px; margin-bottom:0.75rem;'>UPLOAD YOUR SONG LIBRARY</div>
+        """, unsafe_allow_html=True)
+
+        song_files = st.file_uploader(
+            "Browse and select all your MP3 files",
+            type=["mp3"],
+            accept_multiple_files=True,
+            help="Select all 50 songs at once — Cmd+A to select all"
+        )
+
+        if song_files:
+            st.markdown(f"""
+            <div style='font-family:Rajdhani,sans-serif; color:#555;
+                        letter-spacing:2px; font-size:0.85rem; margin:0.75rem 0;'>
+                {len(song_files)} FILES SELECTED
             </div>
             """, unsafe_allow_html=True)
-            pb = st.progress(0)
-            st.session_state.db = build_database(songs_folder, pb)
-            st.session_state.db_size = len(st.session_state.db)
-            pb.empty()
-            st.success(f"DATABASE INITIALIZED · {st.session_state.db_size:,} FINGERPRINTS INDEXED")
-        else:
-            st.error("DIRECTORY NOT FOUND · CHECK PATH")
 
-# ─── IDENTIFY PAGE ────────────────────────────────────────────
+            if st.button("⬡ INITIALIZE DATABASE"):
+                pb = st.progress(0)
+                st.session_state.db = build_database_from_files(song_files, pb)
+                st.session_state.db_size = len(st.session_state.db)
+                st.session_state.db_source = "uploaded"
+                pb.empty()
+                st.success(f"DATABASE INITIALIZED · {st.session_state.db_size:,} FINGERPRINTS INDEXED")
+
+    else:
+        st.markdown("""
+        <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#555;
+                    letter-spacing:3px; margin-bottom:0.75rem;'>SONGS DIRECTORY PATH</div>
+        """, unsafe_allow_html=True)
+
+        songs_folder = st.text_input(
+            "PATH",
+            value=os.path.expanduser("~/EE200_Q3/songs"),
+            label_visibility="collapsed"
+        )
+
+        if st.button("⬡ INITIALIZE DATABASE"):
+            if os.path.exists(songs_folder):
+                pb = st.progress(0)
+                st.session_state.db = build_database(songs_folder, pb)
+                st.session_state.db_size = len(st.session_state.db)
+                st.session_state.db_source = "folder"
+                pb.empty()
+                st.success(f"DATABASE INITIALIZED · {st.session_state.db_size:,} FINGERPRINTS INDEXED")
+            else:
+                st.error("DIRECTORY NOT FOUND")
+
+# ═══════════════════════════════════════════════════════════════
+# IDENTIFY PAGE
+# ═══════════════════════════════════════════════════════════════
 elif nav == "⬡  IDENTIFY":
     st.markdown("""
-    <div style='font-family:Orbitron,monospace; font-size:0.7rem; color:#cc0000; letter-spacing:4px; margin-bottom:1.5rem;'>
-        ⬡ &nbsp; SINGLE TRACK IDENTIFICATION
-    </div>
+    <div style='font-family:Orbitron,monospace; font-size:0.65rem; color:#cc0000;
+                letter-spacing:4px; margin-bottom:1.5rem;'>⬡ &nbsp; SINGLE TRACK IDENTIFICATION</div>
     """, unsafe_allow_html=True)
 
     if not st.session_state.db:
         st.markdown("""
-        <div style='
-            border: 1px solid rgba(180,0,0,0.2);
-            border-left: 3px solid #cc0000;
-            padding: 1.5rem;
-            background: rgba(180,0,0,0.03);
-            font-family: Rajdhani, sans-serif;
-            color: #666;
-            letter-spacing: 2px;
-            font-size: 0.9rem;
-        '>
-            DATABASE OFFLINE · Navigate to DATABASE to initialize
+        <div style='border:1px solid rgba(180,0,0,0.2); border-left:3px solid #cc0000;
+                    padding:1.5rem; background:rgba(180,0,0,0.03); border-radius:2px;
+                    font-family:Rajdhani,sans-serif; color:#555; letter-spacing:2px; font-size:0.9rem;'>
+            DATABASE OFFLINE · Go to DATABASE tab to initialize
         </div>
         """, unsafe_allow_html=True)
     else:
+        st.markdown("""
+        <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#555;
+                    letter-spacing:3px; margin-bottom:0.75rem;'>UPLOAD QUERY TRACK</div>
+        """, unsafe_allow_html=True)
+
         uploaded = st.file_uploader(
-            "UPLOAD AUDIO FILE",
-            type=["mp3"],
-            help="Upload an MP3 file to identify"
+            "Browse and select an MP3 file to identify",
+            type=["mp3"]
         )
 
         if uploaded:
@@ -554,127 +491,100 @@ elif nav == "⬡  IDENTIFY":
             with st.spinner("ANALYZING AUDIO FINGERPRINT..."):
                 matched, count, scores, S_db, peaks, offsets = identify_song(tmp_path, st.session_state.db)
 
-            # Result card
             st.markdown(f"""
             <div style='
-                border: 1px solid rgba(180,0,0,0.4);
-                background: linear-gradient(135deg, rgba(180,0,0,0.08), rgba(0,0,0,0.5));
-                padding: 2.5rem;
-                margin: 1.5rem 0;
-                position: relative;
-                overflow: hidden;
+                border:1px solid rgba(180,0,0,0.35);
+                background:linear-gradient(135deg, rgba(180,0,0,0.07), rgba(0,0,0,0.4));
+                padding:2rem 2.5rem; margin:1.5rem 0; border-radius:2px; position:relative; overflow:hidden;
             '>
-                <div style='
-                    position: absolute;
-                    top: 0; left: 0;
-                    width: 100%; height: 3px;
-                    background: linear-gradient(90deg, transparent, #cc0000, transparent);
-                '></div>
-                <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#cc0000; letter-spacing:4px; margin-bottom:1rem;'>
-                    ⬡ MATCH IDENTIFIED
+                <div style='position:absolute; top:0; left:0; width:100%; height:2px;
+                            background:linear-gradient(90deg,transparent,#cc0000,transparent);'></div>
+                <div style='font-family:Orbitron,monospace; font-size:0.5rem; color:#cc0000;
+                            letter-spacing:4px; margin-bottom:0.75rem;'>⬡ MATCH IDENTIFIED</div>
+                <div style='font-family:Orbitron,monospace; font-size:1.8rem; font-weight:900;
+                            color:#ffffff; letter-spacing:3px; margin-bottom:0.4rem;'>
+                    {matched.upper() if matched else "NO MATCH FOUND"}
                 </div>
-                <div style='font-family:Orbitron,monospace; font-size:2rem; font-weight:900; color:#ffffff; letter-spacing:3px; margin-bottom:0.5rem;'>
-                    {matched.upper() if matched else "NO MATCH"}
-                </div>
-                <div style='font-family:Rajdhani,sans-serif; font-size:1rem; color:#666; letter-spacing:2px;'>
+                <div style='font-family:Rajdhani,sans-serif; font-size:0.95rem; color:#555; letter-spacing:2px;'>
                     CONFIDENCE SCORE: <span style='color:#cc0000;'>{count:,}</span>
                 </div>
-                <div style='
-                    position: absolute;
-                    bottom: 0; right: 0;
-                    width: 200px; height: 200px;
-                    background: radial-gradient(circle, rgba(180,0,0,0.08) 0%, transparent 70%);
-                '></div>
             </div>
             """, unsafe_allow_html=True)
 
-            # Plots
             st.markdown("""
-            <div style='font-family:Orbitron,monospace; font-size:0.7rem; color:#333; letter-spacing:4px; margin: 1.5rem 0 1rem 0;'>
-                ⬡ &nbsp; SIGNAL ANALYSIS
-            </div>
+            <div style='font-family:Orbitron,monospace; font-size:0.6rem; color:#333;
+                        letter-spacing:4px; margin:1.5rem 0 1rem 0;'>⬡ &nbsp; SIGNAL ANALYSIS</div>
             """, unsafe_allow_html=True)
 
             col1, col2, col3 = st.columns(3)
             bg = '#080808'
 
-            with col1:
-                st.markdown("<div style='font-family:Orbitron,monospace; font-size:0.6rem; color:#444; letter-spacing:3px; margin-bottom:0.5rem;'>SPECTROGRAM</div>", unsafe_allow_html=True)
-                fig, ax = plt.subplots(figsize=(6, 4), facecolor=bg)
+            def styled_plot(ax, fig, title):
                 ax.set_facecolor(bg)
-                ax.imshow(S_db, origin='lower', aspect='auto', cmap='inferno')
-                ax.set_xlabel('TIME', color='#333', fontsize=7, labelpad=8, fontfamily='monospace')
-                ax.set_ylabel('FREQUENCY', color='#333', fontsize=7, labelpad=8, fontfamily='monospace')
-                ax.tick_params(colors='#222', labelsize=6)
+                ax.set_xlabel('TIME', color='#2a2a2a', fontsize=7, labelpad=6, fontfamily='monospace')
+                ax.set_ylabel('FREQUENCY', color='#2a2a2a', fontsize=7, labelpad=6, fontfamily='monospace')
+                ax.tick_params(colors='#1a1a1a', labelsize=6)
                 for spine in ax.spines.values():
-                    spine.set_edgecolor('#1a1a1a')
+                    spine.set_edgecolor('#141414')
                 fig.tight_layout()
-                st.pyplot(fig)
-                plt.close()
+
+            with col1:
+                st.markdown("<div style='font-family:Orbitron,monospace;font-size:0.55rem;color:#333;letter-spacing:3px;margin-bottom:0.5rem;'>SPECTROGRAM</div>", unsafe_allow_html=True)
+                fig, ax = plt.subplots(figsize=(6,4), facecolor=bg)
+                ax.imshow(S_db, origin='lower', aspect='auto', cmap='inferno')
+                styled_plot(ax, fig, "SPECTROGRAM")
+                st.pyplot(fig); plt.close()
 
             with col2:
-                st.markdown("<div style='font-family:Orbitron,monospace; font-size:0.6rem; color:#444; letter-spacing:3px; margin-bottom:0.5rem;'>CONSTELLATION</div>", unsafe_allow_html=True)
-                fig, ax = plt.subplots(figsize=(6, 4), facecolor=bg)
-                ax.set_facecolor(bg)
+                st.markdown("<div style='font-family:Orbitron,monospace;font-size:0.55rem;color:#333;letter-spacing:3px;margin-bottom:0.5rem;'>CONSTELLATION</div>", unsafe_allow_html=True)
+                fig, ax = plt.subplots(figsize=(6,4), facecolor=bg)
                 if len(peaks) > 0:
-                    ax.scatter(peaks[:, 1], peaks[:, 0], s=0.5, c='#cc0000', alpha=0.6)
-                ax.set_xlabel('TIME', color='#333', fontsize=7, labelpad=8, fontfamily='monospace')
-                ax.set_ylabel('FREQUENCY', color='#333', fontsize=7, labelpad=8, fontfamily='monospace')
-                ax.tick_params(colors='#222', labelsize=6)
-                for spine in ax.spines.values():
-                    spine.set_edgecolor('#1a1a1a')
-                fig.tight_layout()
-                st.pyplot(fig)
-                plt.close()
+                    ax.scatter(peaks[:,1], peaks[:,0], s=0.5, c='#cc0000', alpha=0.6)
+                styled_plot(ax, fig, "CONSTELLATION")
+                st.pyplot(fig); plt.close()
 
             with col3:
-                st.markdown("<div style='font-family:Orbitron,monospace; font-size:0.6rem; color:#444; letter-spacing:3px; margin-bottom:0.5rem;'>OFFSET HISTOGRAM</div>", unsafe_allow_html=True)
-                fig, ax = plt.subplots(figsize=(6, 4), facecolor=bg)
-                ax.set_facecolor(bg)
+                st.markdown("<div style='font-family:Orbitron,monospace;font-size:0.55rem;color:#333;letter-spacing:3px;margin-bottom:0.5rem;'>OFFSET HISTOGRAM</div>", unsafe_allow_html=True)
+                fig, ax = plt.subplots(figsize=(6,4), facecolor=bg)
                 if offsets:
-                    ax.hist(offsets, bins=100, color='#cc0000', edgecolor='#080808', alpha=0.8)
-                ax.set_xlabel('OFFSET', color='#333', fontsize=7, labelpad=8, fontfamily='monospace')
-                ax.set_ylabel('COUNT', color='#333', fontsize=7, labelpad=8, fontfamily='monospace')
-                ax.tick_params(colors='#222', labelsize=6)
-                for spine in ax.spines.values():
-                    spine.set_edgecolor('#1a1a1a')
-                fig.tight_layout()
-                st.pyplot(fig)
-                plt.close()
+                    ax.hist(offsets, bins=100, color='#cc0000', edgecolor='#080808', alpha=0.85)
+                styled_plot(ax, fig, "OFFSET")
+                st.pyplot(fig); plt.close()
 
-# ─── BATCH PAGE ───────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# BATCH PAGE
+# ═══════════════════════════════════════════════════════════════
 elif nav == "⬡  BATCH SCAN":
     st.markdown("""
-    <div style='font-family:Orbitron,monospace; font-size:0.7rem; color:#cc0000; letter-spacing:4px; margin-bottom:1.5rem;'>
-        ⬡ &nbsp; BATCH SCAN PROTOCOL
-    </div>
+    <div style='font-family:Orbitron,monospace; font-size:0.65rem; color:#cc0000;
+                letter-spacing:4px; margin-bottom:1.5rem;'>⬡ &nbsp; BATCH SCAN PROTOCOL</div>
     """, unsafe_allow_html=True)
 
     if not st.session_state.db:
         st.markdown("""
-        <div style='
-            border: 1px solid rgba(180,0,0,0.2);
-            border-left: 3px solid #cc0000;
-            padding: 1.5rem;
-            background: rgba(180,0,0,0.03);
-            font-family: Rajdhani, sans-serif;
-            color: #666;
-            letter-spacing: 2px;
-        '>
-            DATABASE OFFLINE · Navigate to DATABASE to initialize
+        <div style='border:1px solid rgba(180,0,0,0.2); border-left:3px solid #cc0000;
+                    padding:1.5rem; background:rgba(180,0,0,0.03); border-radius:2px;
+                    font-family:Rajdhani,sans-serif; color:#555; letter-spacing:2px; font-size:0.9rem;'>
+            DATABASE OFFLINE · Go to DATABASE tab to initialize
         </div>
         """, unsafe_allow_html=True)
     else:
+        st.markdown("""
+        <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#555;
+                    letter-spacing:3px; margin-bottom:0.75rem;'>UPLOAD QUERY FILES</div>
+        """, unsafe_allow_html=True)
+
         uploaded_files = st.file_uploader(
-            "UPLOAD MULTIPLE AUDIO FILES",
+            "Browse and select multiple MP3 files",
             type=["mp3"],
             accept_multiple_files=True
         )
 
         if uploaded_files:
             st.markdown(f"""
-            <div style='font-family:Rajdhani,sans-serif; color:#444; letter-spacing:2px; font-size:0.85rem; margin:1rem 0;'>
-                {len(uploaded_files)} FILES QUEUED FOR ANALYSIS
+            <div style='font-family:Rajdhani,sans-serif; color:#444;
+                        letter-spacing:2px; font-size:0.85rem; margin:0.75rem 0;'>
+                {len(uploaded_files)} FILES QUEUED
             </div>
             """, unsafe_allow_html=True)
 
@@ -691,9 +601,8 @@ elif nav == "⬡  BATCH SCAN":
                 pb.empty()
 
                 st.markdown("""
-                <div style='font-family:Orbitron,monospace; font-size:0.7rem; color:#cc0000; letter-spacing:4px; margin: 1.5rem 0 1rem 0;'>
-                    ⬡ &nbsp; SCAN RESULTS
-                </div>
+                <div style='font-family:Orbitron,monospace; font-size:0.6rem; color:#333;
+                            letter-spacing:4px; margin:1.5rem 0 1rem 0;'>⬡ &nbsp; SCAN RESULTS</div>
                 """, unsafe_allow_html=True)
 
                 st.table(results)
@@ -701,28 +610,4 @@ elif nav == "⬡  BATCH SCAN":
                 csv_lines = "filename,prediction\n" + "\n".join(
                     f"{r['FILENAME']},{r['IDENTIFIED AS']}" for r in results
                 )
-                st.download_button(
-                    "⬡ EXPORT results.csv",
-                    csv_lines,
-                    "results.csv",
-                    mime="text/csv"
-                )
-
-# ─── FOOTER ───────────────────────────────────────────────────
-st.markdown("<br><br>", unsafe_allow_html=True)
-st.markdown("""
-<div style='
-    border-top: 1px solid rgba(180,0,0,0.1);
-    padding-top: 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-'>
-    <div style='font-family:Orbitron,monospace; font-size:0.55rem; color:#222; letter-spacing:3px;'>
-        ⬡ ZAPPTAIN AMERICA · STARK AUDIO SYSTEMS
-    </div>
-    <div style='font-family:Rajdhani,sans-serif; font-size:0.75rem; color:#222; letter-spacing:2px;'>
-        EE200 · SIGNALS SYSTEMS & NETWORKS · Q3B
-    </div>
-</div>
-""", unsafe_allow_html=True)
+                st.download_button("⬡ EXPORT results.csv", csv_lines, "results.csv", mime="text/csv")
