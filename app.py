@@ -302,6 +302,20 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
+# Auto-load prebuilt database
+import pickle, gzip
+if st.session_state.db is None:
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'song_db.pkl.gz')
+    if os.path.exists(db_path):
+        try:
+            with gzip.open(db_path, 'rb') as f:
+                data = pickle.load(f)
+            st.session_state.db = data['db']
+            st.session_state.db_size = len(data['db'])
+            st.session_state.song_peaks = data.get('song_peaks', {})
+            st.session_state.song_hashes = data.get('song_hashes_count', {})
+        except Exception as e:
+            st.error(f"Failed to load database: {e}")
 # ─── HEADER ───────────────────────────────────────────────────
 db_status = "ONLINE" if st.session_state.db else "OFFLINE"
 db_color = "#cc0000" if st.session_state.db else "#2a2a2a"

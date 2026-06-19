@@ -3,3 +3,4 @@ database.pkl
 result.png
 __pycache__/
 *.pyc
+song_db_compressed.pkl
