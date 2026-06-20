@@ -4,3 +4,5 @@ result.png
 __pycache__/
 *.pyc
 song_db_compressed.pkl
+database.pkl
+song_db_compressed.pkl
